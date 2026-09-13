@@ -3,9 +3,9 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-nat
 import { useQuery } from "@tanstack/react-query";
 import { getContact, getContactActivity } from "../../api/contacts";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { LeadsStackParamList } from "../../navigation/types";
+import type { ReportStackParamList } from "../../navigation/types";
 
-type Props = NativeStackScreenProps<LeadsStackParamList, "ContactDetail">;
+type Props = NativeStackScreenProps<ReportStackParamList, "ContactDetail">;
 
 export function ContactDetailScreen({ route }: Props) {
   const { contactId } = route.params;

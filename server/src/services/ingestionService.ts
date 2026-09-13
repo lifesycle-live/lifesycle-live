@@ -3,7 +3,10 @@ import { Broadcast } from "../entities/Broadcast.js";
 import { EngagementEvent } from "../entities/EngagementEvent.js";
 import { getAdapter } from "../adapters/registry.js";
 import { IngestInfo, PlatformId } from "../adapters/types.js";
+import { getOAuthProvider } from "../oauth/registry.js";
+import { resolveAgentConnection } from "../oauth/refresh.js";
 import { aiService } from "./aiService.js";
+import { buildLeadCaptureUrl } from "../routes/leadCapture.js";
 
 const POLL_INTERVAL_MS = 6000;
 
@@ -19,6 +22,8 @@ interface PollState {
   seenExternalIds: Set<string>;
   /** Per-platform "fetch comments after this timestamp" cursor. */
   cursor: Partial<Record<PlatformId, Date | null>>;
+  /** Per-platform last time postCallToAction was (re)sent, for adapters with ctaRepeatMs set. */
+  lastCtaAt: Partial<Record<PlatformId, number>>;
 }
 
 const activePolls = new Map<string, PollState>();
@@ -38,11 +43,17 @@ export function startIngestion(broadcast: Broadcast, log: MinimalLogger): void {
     Record<PlatformId, IngestInfo>
   >;
 
+  // Seeded to "now" for every platform so the first postCallToAction resend
+  // (see pollOnce) waits a full ctaRepeatMs after the initial post that
+  // routes/broadcasts.ts already sent right after publish — otherwise the
+  // first poll tick fires a near-immediate duplicate.
+  const now = Date.now();
   const state: PollState = {
     seenExternalIds: new Set(),
     cursor: {},
+    lastCtaAt: Object.fromEntries(platforms.map((p) => [p, now])) as Partial<Record<PlatformId, number>>,
     timer: setInterval(() => {
-      void pollOnce(broadcast.id, platforms, ingestByPlatform, state, log);
+      void pollOnce(broadcast.id, broadcast.agentId, platforms, ingestByPlatform, state, log);
     }, POLL_INTERVAL_MS),
   };
   activePolls.set(broadcast.id, state);
@@ -60,6 +71,7 @@ export function stopIngestion(broadcastId: string, log?: MinimalLogger): void {
 
 async function pollOnce(
   broadcastId: string,
+  agentId: string,
   platforms: PlatformId[],
   ingestByPlatform: Partial<Record<PlatformId, IngestInfo>>,
   state: PollState,
@@ -74,9 +86,28 @@ async function pollOnce(
     // platform failed to configure/publish — nothing to poll yet.
     if (!adapter || !adapter.configured || !ingest) continue;
 
+    if (adapter.postCallToAction && adapter.ctaRepeatMs) {
+      const due = (state.lastCtaAt[platform] ?? 0) + adapter.ctaRepeatMs <= Date.now();
+      const ctaUrl = due ? buildLeadCaptureUrl(broadcastId) : null;
+      if (ctaUrl) {
+        state.lastCtaAt[platform] = Date.now();
+        const context = getOAuthProvider(platform)
+          ? { agentId, connection: await resolveAgentConnection(agentId, platform) }
+          : { agentId };
+        adapter
+          .postCallToAction(broadcastId, context, ingest, ctaUrl)
+          .catch((err) => log.warn({ err, broadcastId, platform }, "CTA resend failed"));
+      }
+    }
+
     let comments;
     try {
-      comments = await adapter.fetchComments(broadcastId, ingest, state.cursor[platform] ?? null);
+      // Re-resolved every poll (rather than cached from publish()) so a
+      // token rotated mid-broadcast via oauth/refresh.ts is picked up.
+      const context = getOAuthProvider(platform)
+        ? { agentId, connection: await resolveAgentConnection(agentId, platform) }
+        : { agentId };
+      comments = await adapter.fetchComments(broadcastId, context, ingest, state.cursor[platform] ?? null);
     } catch (err) {
       log.warn({ err, broadcastId, platform }, "comment fetch failed, will retry next poll");
       continue;

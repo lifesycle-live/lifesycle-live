@@ -1,6 +1,7 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { AiPrepSuggestions } from "../../../api/broadcasts";
+import { colors, radius } from "../../../theme";
 
 interface Props {
   isLoading: boolean;
@@ -11,19 +12,20 @@ interface Props {
 export function AiPrepPanel({ isLoading, prep }: Props) {
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>AI PREP</Text>
+      <Text style={styles.title}>✨ AI PREP</Text>
       {isLoading || !prep ? (
         <ActivityIndicator style={{ marginVertical: 12 }} />
       ) : (
         <>
           {prep.talkingPoints.map((point) => (
             <Text key={point} style={styles.point}>
-              • {point}
+              •  {point}
             </Text>
           ))}
-          {prep.suggestedStartTime && (
+          {prep.promoCopy ? <Text style={styles.promo}>“{prep.promoCopy}”</Text> : null}
+          {prep.suggestedStartTime ? (
             <Text style={styles.suggestion}>Suggested time: {prep.suggestedStartTime}</Text>
-          )}
+          ) : null}
         </>
       )}
     </View>
@@ -32,12 +34,13 @@ export function AiPrepPanel({ isLoading, prep }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
+    backgroundColor: "#eef2ff",
+    borderRadius: radius.md,
     padding: 14,
-    marginBottom: 16,
+    marginBottom: 18,
   },
-  title: { fontSize: 12, fontWeight: "700", color: "#64748b", marginBottom: 8, letterSpacing: 0.5 },
-  point: { fontSize: 14, color: "#1e293b", marginBottom: 4 },
-  suggestion: { fontSize: 13, color: "#475569", marginTop: 8, fontStyle: "italic" },
+  title: { fontSize: 12, fontWeight: "800", color: colors.primary, marginBottom: 8, letterSpacing: 0.5 },
+  point: { fontSize: 14, color: colors.text, marginBottom: 4, lineHeight: 20 },
+  promo: { fontSize: 13, color: colors.text, marginTop: 10, fontStyle: "italic" },
+  suggestion: { fontSize: 13, color: colors.textMuted, marginTop: 8 },
 });

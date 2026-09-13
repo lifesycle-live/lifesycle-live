@@ -8,6 +8,34 @@ export async function getProperties(): Promise<Property[]> {
   return apiRequest<Property[]>("/properties");
 }
 
+export type NewProperty = Pick<Property, "address" | "price" | "propertyType" | "bedrooms" | "bathrooms" | "summary" | "features" | "images">;
+export async function createProperty(input: NewProperty): Promise<Property> {
+  if (USE_MOCKS) {
+    const property = { ...input, id: `local-${Date.now()}-${Math.random().toString(36).slice(2)}` };
+    mockProperties.unshift(property);
+    return mockDelay(property);
+  }
+  return apiRequest<Property>("/properties", { method: "POST", body: input });
+}
+
+export async function getProperty(id: string): Promise<Property> {
+  if (USE_MOCKS) {
+    const found = mockProperties.find((p) => p.id === id);
+    if (!found) throw new Error("Property not found");
+    return mockDelay(found);
+  }
+  return apiRequest<Property>(`/properties/${id}`);
+}
+
+export async function getBroadcast(id: string): Promise<Broadcast> {
+  if (USE_MOCKS) throw new Error("Demo broadcast is only available during this session.");
+  return apiRequest<Broadcast>(`/broadcasts/${id}`);
+}
+export async function getStreamStatus(id: string): Promise<{ ended: boolean; platforms: { platform: PlatformId; status: string }[] }> {
+  if (USE_MOCKS) return { ended: false, platforms: [] };
+  return apiRequest(`/broadcasts/${id}/stream-status`);
+}
+
 /**
  * Starts a broadcast on every one-click platform selected. Per
  * docs/06-system-architecture.md the backend owns RTMPS provisioning; the

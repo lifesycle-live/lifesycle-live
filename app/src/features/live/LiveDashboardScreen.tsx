@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { endBroadcast } from "../../api/broadcasts";
 import { convertEngagementToLead, convertEngagementToTask, getEngagementFeed } from "../../api/engagement";
@@ -92,6 +92,39 @@ export function LiveDashboardScreen({ route, navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {activeBroadcast?.ingest && Object.keys(activeBroadcast.ingest).length > 0 ? (
+        <View style={styles.encoderCard}>
+          <Text style={styles.encoderTitle}>ENCODER — push here to go live</Text>
+          <Text style={styles.encoderHint}>
+            In-app camera streaming needs a dev build. For now, point OBS or a phone RTMP app at the
+            target below — YouTube switches to live automatically once it receives the stream.
+          </Text>
+          {Object.entries(activeBroadcast.ingest).map(([platform, info]) =>
+            info ? (
+              <View key={platform} style={styles.encoderRow}>
+                <Text style={styles.encoderPlatform}>{platform.toUpperCase()}</Text>
+                <Text style={styles.encoderField}>Server URL</Text>
+                <Text selectable style={styles.encoderValue}>
+                  {info.rtmpUrl}
+                </Text>
+                <Text style={styles.encoderField}>Stream key</Text>
+                <Text selectable style={styles.encoderValue}>
+                  {info.streamKey}
+                </Text>
+                {info.watchUrl ? (
+                  <TouchableOpacity
+                    style={styles.watchButton}
+                    onPress={() => Linking.openURL(info.watchUrl as string)}
+                  >
+                    <Text style={styles.watchButtonText}>▶ Open the live page</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null,
+          )}
+        </View>
+      ) : null}
+
       <View style={styles.previewContainer}>
         {permission?.granted ? (
           <CameraView style={styles.preview} facing="back" />
@@ -132,6 +165,21 @@ const styles = StyleSheet.create({
   liveLabel: { color: "#dc2626", fontWeight: "700", fontSize: 13 },
   propertyLabel: { fontSize: 13, color: "#334155", flex: 1, marginLeft: 12 },
   endLabel: { color: "#2563eb", fontWeight: "600", fontSize: 13 },
+  encoderCard: { backgroundColor: "#0f172a", padding: 14 },
+  encoderTitle: { color: "#93c5fd", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  encoderHint: { color: "#cbd5e1", fontSize: 11, lineHeight: 16, marginTop: 6 },
+  encoderRow: { marginTop: 10 },
+  encoderPlatform: { color: "#fff", fontSize: 12, fontWeight: "800", marginBottom: 4 },
+  encoderField: { color: "#64748b", fontSize: 10, marginTop: 6, textTransform: "uppercase" },
+  encoderValue: { color: "#e2e8f0", fontSize: 12, fontFamily: "monospace" },
+  watchButton: {
+    marginTop: 10,
+    backgroundColor: "#dc2626",
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  watchButtonText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   previewContainer: { height: 220, backgroundColor: "#000" },
   preview: { flex: 1 },
   previewPlaceholder: { alignItems: "center", justifyContent: "center" },

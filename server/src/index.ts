@@ -10,11 +10,14 @@ import { leadRoutes } from "./routes/leads.js";
 import { taskRoutes } from "./routes/tasks.js";
 import { engagementRoutes } from "./routes/engagement.js";
 import { platformConnectionRoutes } from "./routes/platformConnections.js";
+import { oauthRoutes } from "./routes/oauth.js";
+import { legalRoutes } from "./routes/legal.js";
+import { leadCaptureRoutes } from "./routes/leadCapture.js";
 
 const app = Fastify({ logger: true });
 
 await AppDataSource.initialize();
-app.log.info("Connected to Oracle Autonomous Database");
+app.log.info("Connected to Supabase Postgres");
 
 await app.register(cors, { origin: true });
 
@@ -28,6 +31,9 @@ await app.register(leadRoutes);
 await app.register(taskRoutes);
 await app.register(engagementRoutes);
 await app.register(platformConnectionRoutes);
+await app.register(oauthRoutes);
+await app.register(legalRoutes);
+await app.register(leadCaptureRoutes);
 
 const port = Number(process.env.PORT ?? 4000);
 app

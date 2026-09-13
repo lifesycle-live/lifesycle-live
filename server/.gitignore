@@ -1,4 +1,7 @@
 node_modules
 dist
 .env
-wallet/
+
+# Portable MediaMTX binary used for local WebRTC(WHIP)->RTMP relay testing
+# (see docs on going live from the browser); not part of the deployed app.
+mediamtx/

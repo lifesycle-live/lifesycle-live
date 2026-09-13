@@ -7,7 +7,39 @@ import { Property } from "./entities/Property.js";
 import { Task } from "./entities/Task.js";
 
 export function serializeProperty(p: Property) {
-  return { id: p.id, address: p.address, price: p.price ?? undefined, thumbnailUrl: p.thumbnailUrl ?? undefined };
+  let features: string[] = [];
+  if (p.features) {
+    try {
+      const parsed = JSON.parse(p.features);
+      if (Array.isArray(parsed)) features = parsed.map(String);
+    } catch {
+      features = [];
+    }
+  }
+  let images: string[] = [];
+  if (p.images) {
+    try {
+      const parsed = JSON.parse(p.images);
+      if (Array.isArray(parsed)) images = parsed.map(String);
+    } catch {
+      images = [];
+    }
+  }
+  // Fall back to the hero image so the gallery always has at least one photo.
+  if (images.length === 0 && p.imageUrl) images = [p.imageUrl];
+  return {
+    id: p.id,
+    address: p.address,
+    price: p.price ?? undefined,
+    thumbnailUrl: p.thumbnailUrl ?? undefined,
+    imageUrl: p.imageUrl ?? undefined,
+    bedrooms: p.bedrooms ?? undefined,
+    bathrooms: p.bathrooms ?? undefined,
+    propertyType: p.propertyType ?? undefined,
+    summary: p.summary ?? undefined,
+    features,
+    images,
+  };
 }
 
 export function serializeContact(c: Contact) {

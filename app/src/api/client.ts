@@ -5,6 +5,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    /** Server-supplied per-platform failure reasons, when present. */
+    public details?: string[],
   ) {
     super(message);
     this.name = "ApiError";
@@ -17,6 +19,16 @@ interface RequestOptions {
 }
 
 /**
+ * Called when the server rejects a request with 401 so the app can drop back
+ * to the login screen instead of leaving every query stuck retrying.
+ * Registered by the auth store on startup.
+ */
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
+}
+
+/**
  * Base fetch wrapper: injects the auth header and normalizes errors.
  * All real (non-mock) API calls should go through this — see the per-domain
  * files (broadcasts.ts, leads.ts, ...) for how mock vs. real is switched.
@@ -24,17 +36,43 @@ interface RequestOptions {
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const tokens = await getStoredTokens();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    throw new ApiError(
+      `Could not reach the server at ${API_BASE_URL}. Is it running?`,
+      0,
+    );
+  }
+
+  if (response.status === 401 && path !== "/auth/login") {
+    onUnauthorized?.();
+    throw new ApiError("Session expired. Please sign in again.", 401);
+  }
 
   if (!response.ok) {
-    throw new ApiError(`Request to ${path} failed with status ${response.status}`, response.status);
+    let serverError: string | undefined;
+    let details: string[] | undefined;
+    try {
+      const payload = (await response.json()) as { error?: string; details?: string[] };
+      serverError = payload.error;
+      details = Array.isArray(payload.details) ? payload.details : undefined;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(
+      serverError ?? `Request to ${path} failed with status ${response.status}`,
+      response.status,
+      details,
+    );
   }
 
   return (await response.json()) as T;

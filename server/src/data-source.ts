@@ -11,31 +11,24 @@ import { Task } from "./entities/Task.js";
 import { ActivityItem } from "./entities/ActivityItem.js";
 import { PlatformConnection } from "./entities/PlatformConnection.js";
 
-if (!env.oracle.connectString || !env.oracle.user || !env.oracle.password) {
+if (!env.database.url) {
   throw new Error(
-    "Missing Oracle connection settings. Set ORACLE_CONNECT_STRING, ORACLE_USER, ORACLE_PASSWORD " +
-      "(and ORACLE_WALLET_LOCATION/ORACLE_WALLET_PASSWORD for Autonomous Database) in server/.env — see .env.example.",
+    "Missing DATABASE_URL. Set it in server/.env to your Supabase Postgres connection string " +
+      "(Supabase dashboard -> Project Settings -> Database -> Connection string -> URI) — see .env.example.",
   );
 }
 
 /**
- * Autonomous Database connects over mTLS using the wallet you download from
- * the OCI console ("DB Connection" -> "Download Wallet"). node-oracledb's
- * Thin mode (no Instant Client install needed) supports this directly via
- * walletLocation/walletPassword passed through `extra`.
+ * Supabase is plain Postgres. Use the connection string from the Supabase
+ * dashboard (Project Settings -> Database). The pooled connection (host
+ * `...pooler.supabase.com`, port 6543) is the right default for a stateless
+ * API; append `?sslmode=require` or rely on the `ssl` option below.
  */
 export const AppDataSource = new DataSource({
-  type: "oracle",
-  connectString: env.oracle.connectString,
-  username: env.oracle.user,
-  password: env.oracle.password,
+  type: "postgres",
+  url: env.database.url,
+  ssl: { rejectUnauthorized: false },
   synchronize: process.env.NODE_ENV !== "production",
   logging: process.env.TYPEORM_LOGGING === "true",
   entities: [Agent, Property, Contact, Broadcast, EngagementEvent, Lead, Task, ActivityItem, PlatformConnection],
-  extra: env.oracle.walletLocation
-    ? {
-        walletLocation: env.oracle.walletLocation,
-        walletPassword: env.oracle.walletPassword,
-      }
-    : undefined,
 });

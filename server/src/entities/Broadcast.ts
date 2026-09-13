@@ -8,24 +8,24 @@ export type BroadcastStatus = "scheduled" | "live" | "ended" | "failed";
 
 @Entity()
 export class Broadcast {
-  @PrimaryColumn({ type: "varchar2", length: 36 })
+  @PrimaryColumn({ type: "varchar", length: 36 })
   id!: string;
 
-  @Column({ type: "varchar2", length: 36 })
+  @Column({ type: "varchar", length: 36 })
   propertyId!: string;
 
   @ManyToOne(() => Property)
   @JoinColumn({ name: "propertyId" })
   property!: Property;
 
-  @Column({ type: "varchar2", length: 36 })
+  @Column({ type: "varchar", length: 36 })
   agentId!: string;
 
   @ManyToOne(() => Agent)
   @JoinColumn({ name: "agentId" })
   agent!: Agent;
 
-  @Column({ type: "varchar2", length: 20 })
+  @Column({ type: "varchar", length: 20 })
   status!: BroadcastStatus;
 
   @Column({ type: "timestamp", nullable: true })
@@ -42,13 +42,13 @@ export class Broadcast {
   @Column({ type: "text", nullable: true })
   ingest?: string | null;
 
-  @Column({ type: "number", default: 0 })
+  @Column({ type: "int", default: 0 })
   peakViewers!: number;
 
-  @Column({ type: "varchar2", length: 1000, nullable: true })
+  @Column({ type: "varchar", length: 1000, nullable: true })
   transcriptUrl?: string | null;
 
-  @Column({ type: "varchar2", length: 1000, nullable: true })
+  @Column({ type: "varchar", length: 1000, nullable: true })
   recordingUrl?: string | null;
 
   @BeforeInsert()

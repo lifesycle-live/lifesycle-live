@@ -34,6 +34,7 @@ Research, validate, and design the concept of Lifesycle Live™ — a live-strea
 | 15 | [Commercial Impact](15-commercial-impact.md) | Business value case |
 | 16 | [Success Metrics & KPIs](16-success-metrics.md) | Adoption and product-success measures |
 | 17 | [Final Presentation](17-final-presentation.md) | Leadership pitch narrative |
+| 18 | [Platform Integration Plan](18-platform-integration-plan.md) | Per-agent account connect: dev accounts to open, OAuth/adapter architecture, wiring order |
 
 **Start here if short on time**: [17-final-presentation.md](17-final-presentation.md) is the synthesized leadership pitch covering every other document.
 

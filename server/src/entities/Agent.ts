@@ -4,16 +4,16 @@ import { randomUUID } from "node:crypto";
 
 @Entity()
 export class Agent {
-  @PrimaryColumn({ type: "varchar2", length: 36 })
+  @PrimaryColumn({ type: "varchar", length: 36 })
   id!: string;
 
-  @Column({ type: "varchar2", length: 255, unique: true })
+  @Column({ type: "varchar", length: 255, unique: true })
   email!: string;
 
-  @Column({ type: "varchar2", length: 255 })
+  @Column({ type: "varchar", length: 255 })
   passwordHash!: string;
 
-  @Column({ type: "varchar2", length: 255 })
+  @Column({ type: "varchar", length: 255 })
   name!: string;
 
   @CreateDateColumn()

@@ -2,6 +2,7 @@ import React from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { getBroadcastSummary } from "../../api/broadcasts";
+import { QueryBoundary } from "../../components/QueryBoundary";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { LiveStackParamList } from "../../navigation/types";
 
@@ -9,16 +10,14 @@ type Props = NativeStackScreenProps<LiveStackParamList, "BroadcastSummary">;
 
 export function BroadcastSummaryScreen({ route, navigation }: Props) {
   const { broadcastId } = route.params;
-  const { data: summary, isLoading } = useQuery({
+  const { data: summary, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["broadcast-summary", broadcastId],
     queryFn: () => getBroadcastSummary(broadcastId),
   });
 
-  if (isLoading || !summary) {
+  if (isLoading || isError || !summary) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
+      <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={refetch} />
     );
   }
 

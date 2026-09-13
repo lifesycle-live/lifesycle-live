@@ -7,27 +7,27 @@ import { Broadcast } from "./Broadcast.js";
 
 @Entity()
 export class Task {
-  @PrimaryColumn({ type: "varchar2", length: 36 })
+  @PrimaryColumn({ type: "varchar", length: 36 })
   id!: string;
 
-  @Column({ type: "varchar2", length: 1000 })
+  @Column({ type: "varchar", length: 1000 })
   title!: string;
 
-  @Column({ type: "varchar2", length: 36, nullable: true })
+  @Column({ type: "varchar", length: 36, nullable: true })
   contactId?: string | null;
 
   @ManyToOne(() => Contact, { nullable: true })
   @JoinColumn({ name: "contactId" })
   contact?: Contact | null;
 
-  @Column({ type: "varchar2", length: 36, nullable: true })
+  @Column({ type: "varchar", length: 36, nullable: true })
   leadId?: string | null;
 
   @ManyToOne(() => Lead, { nullable: true })
   @JoinColumn({ name: "leadId" })
   lead?: Lead | null;
 
-  @Column({ type: "varchar2", length: 36, nullable: true })
+  @Column({ type: "varchar", length: 36, nullable: true })
   broadcastId?: string | null;
 
   @ManyToOne(() => Broadcast, { nullable: true })

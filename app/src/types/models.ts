@@ -9,44 +9,76 @@ export type PlatformId =
   | "zoom"
   | "linkedin"
   | "instagram"
-  | "tiktok";
+  | "tiktok"
+  | "x";
 
 /**
  * Per docs/04-technical-feasibility.md: only these platforms support a true
  * one-click publish. The rest require the agent to start natively in the
  * platform's own app; Lifesycle only listens/assists for those.
  */
-export const ONE_CLICK_PLATFORMS: PlatformId[] = ["facebook", "youtube", "zoom"];
-export const ASSISTED_PLATFORMS: PlatformId[] = ["linkedin", "instagram", "tiktok"];
+export const ONE_CLICK_PLATFORMS: PlatformId[] = ["facebook", "youtube"];
+export const ASSISTED_PLATFORMS: PlatformId[] = ["zoom", "linkedin", "instagram", "tiktok", "x"];
 
 export interface PlatformInfo {
   id: PlatformId;
   label: string;
   mode: "one-click" | "assisted";
   note: string;
+  /** Brand colour used when the platform is selected in the UI. */
+  color: string;
+  icon: string;
 }
 
 export const PLATFORM_CATALOG: Record<PlatformId, PlatformInfo> = {
-  facebook: { id: "facebook", label: "Facebook Live", mode: "one-click", note: "starts instantly" },
-  youtube: { id: "youtube", label: "YouTube Live", mode: "one-click", note: "starts instantly" },
-  zoom: { id: "zoom", label: "Zoom (private/webinar)", mode: "one-click", note: "starts instantly" },
+  x: { id: "x", label: "X", mode: "assisted", note: "Account connection only; broadcast integration not implemented", color: "#14171a", icon: "𝕏" },
+  facebook: {
+    id: "facebook",
+    label: "Facebook Live",
+    mode: "one-click",
+    note: "starts instantly",
+    color: "#1877F2",
+    icon: "f",
+  },
+  youtube: {
+    id: "youtube",
+    label: "YouTube Live",
+    mode: "one-click",
+    note: "starts instantly",
+    color: "#FF0000",
+    icon: "▶",
+  },
+  zoom: {
+    id: "zoom",
+    label: "Zoom",
+    mode: "assisted",
+    note: "Account connection only; meeting broadcast not integrated",
+    color: "#2D8CFF",
+    icon: "z",
+  },
   linkedin: {
     id: "linkedin",
     label: "LinkedIn Live",
     mode: "assisted",
     note: "must be scheduled in advance",
+    color: "#0A66C2",
+    icon: "in",
   },
   instagram: {
     id: "instagram",
     label: "Instagram Live",
     mode: "assisted",
-    note: "you start this in Instagram — we'll capture comments after",
+    note: "Account connection only; live comments not integrated",
+    color: "#E1306C",
+    icon: "◎",
   },
   tiktok: {
     id: "tiktok",
     label: "TikTok Live",
     mode: "assisted",
-    note: "you start this in TikTok — chat capture is experimental (beta)",
+    note: "Account connection only; live chat not integrated",
+    color: "#010101",
+    icon: "♪",
   },
 };
 
@@ -57,6 +89,14 @@ export interface Property {
   address: string;
   price?: string;
   thumbnailUrl?: string;
+  imageUrl?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  propertyType?: string;
+  summary?: string;
+  features?: string[];
+  /** Photo URLs for the listing gallery. First entry doubles as the hero image. */
+  images?: string[];
 }
 
 export interface Broadcast {
@@ -68,7 +108,12 @@ export interface Broadcast {
   endedAt?: string;
   platforms: PlatformId[];
   /** Per-platform ingest info returned by the backend once a broadcast starts. */
-  ingest?: Partial<Record<PlatformId, { rtmpUrl: string; streamKey: string }>>;
+  ingest?: Partial<
+    Record<
+      PlatformId,
+      { rtmpUrl: string; streamKey: string; watchUrl?: string; providerRef?: Record<string, string> }
+    >
+  >;
 }
 
 export interface BroadcastSummary {

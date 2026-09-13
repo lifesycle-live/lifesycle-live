@@ -1,130 +1,65 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PLATFORM_CATALOG, PlatformId } from "../../types/models";
-import { connectFacebook, disconnectPlatform, getPlatformConnections } from "../../api/platformConnections";
+import { CONNECTABLE_PLATFORMS, connectPlatform, disconnectPlatform, getPlatformAvailability, getPlatformConnections } from "../../api/platformConnections";
+import { colors, radius } from "../../theme";
+import { QueryBoundary } from "../../components/QueryBoundary";
 
-const CONNECTABLE: PlatformId[] = ["facebook"];
-
-/**
- * "Connect your accounts" — done once, per docs/08-user-journeys.md. After
- * this, GoLiveSetupScreen's platform picker just uses whatever's already
- * connected; there's no per-broadcast re-auth.
- */
 export function ConnectAccountsScreen() {
   const queryClient = useQueryClient();
-  const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null);
-
-  const { data: connections, isLoading } = useQuery({
-    queryKey: ["platform-connections"],
-    queryFn: getPlatformConnections,
-  });
-
-  const connectedByPlatform = new Map((connections ?? []).map((c) => [c.platform, c]));
-
-  async function handleConnect(platform: PlatformId) {
-    if (platform !== "facebook") return;
-    setConnectingPlatform(platform);
+  const [busy, setBusy] = useState<PlatformId | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const connections = useQuery({ queryKey: ["platform-connections"], queryFn: getPlatformConnections });
+  const availability = useQuery({ queryKey: ["platform-availability"], queryFn: getPlatformAvailability });
+  const connected = new Map((connections.data ?? []).map(c => [c.platform, c]));
+  const available = new Map((availability.data ?? []).map(c => [c.platform, c]));
+  async function change(platform: PlatformId, disconnect: boolean) {
+    setBusy(platform); setNotice(null);
     try {
-      const result = await connectFacebook();
-      if (result.status === "success") {
-        await queryClient.invalidateQueries({ queryKey: ["platform-connections"] });
-      } else if (result.status === "error") {
-        Alert.alert("Connection failed", result.message);
+      if (disconnect) {
+        await disconnectPlatform(platform);
+        setNotice("Disconnected from Lifesycle. You can also revoke access in the platform's settings.");
+      } else {
+        const result = await connectPlatform(platform);
+        setNotice(result.status === "success" ? "Account connected." : result.status === "cancelled" ? "Connection cancelled." : result.message);
       }
-    } finally {
-      setConnectingPlatform(null);
-    }
+      await queryClient.invalidateQueries({ queryKey: ["platform-connections"] });
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Connection failed. Please retry."); }
+    finally { setBusy(null); }
   }
-
-  async function handleDisconnect(platform: PlatformId) {
-    await disconnectPlatform(platform);
-    await queryClient.invalidateQueries({ queryKey: ["platform-connections"] });
-  }
-
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.intro}>
-        Connect each account once — after that, starting a broadcast just uses whichever platforms you've connected.
-      </Text>
-
-      {Object.values(PLATFORM_CATALOG).map((platform) => {
-        const connection = connectedByPlatform.get(platform.id);
-        const isConnectable = CONNECTABLE.includes(platform.id);
-        const isBusy = connectingPlatform === platform.id;
-
-        return (
-          <View key={platform.id} style={styles.row}>
-            <View style={styles.textCol}>
-              <Text style={styles.label}>{platform.label}</Text>
-              {connection ? (
-                <Text style={styles.connected}>Connected · {connection.externalAccountName}</Text>
-              ) : (
-                <Text style={styles.notConnected}>{isConnectable ? "Not connected" : "Not available yet"}</Text>
-              )}
-            </View>
-
-            {isConnectable &&
-              (connection ? (
-                <TouchableOpacity style={styles.disconnectButton} onPress={() => handleDisconnect(platform.id)}>
-                  <Text style={styles.disconnectButtonText}>Disconnect</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.connectButton}
-                  disabled={isBusy}
-                  onPress={() => handleConnect(platform.id)}
-                >
-                  {isBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.connectButtonText}>Connect</Text>}
-                </TouchableOpacity>
-              ))}
-          </View>
-        );
-      })}
-    </ScrollView>
-  );
+  if (connections.isLoading || availability.isLoading || connections.isError || availability.isError) return <QueryBoundary isLoading={connections.isLoading || availability.isLoading} isError={connections.isError || availability.isError} error={connections.error ?? availability.error} onRetry={() => { void connections.refetch(); void availability.refetch(); }} />;
+  return <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Text style={styles.title}>Your channels</Text>
+    <Text style={styles.intro}>Link the accounts you manage. Each platform has its own broadcast and comment permissions.</Text>
+    {notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
+    {Object.values(PLATFORM_CATALOG).map(platform => {
+      const connection = connected.get(platform.id);
+      const setup = available.get(platform.id);
+      const connectable = CONNECTABLE_PLATFORMS.includes(platform.id);
+      return <View key={platform.id} style={styles.card}>
+        <View style={styles.row}>
+          <View style={[styles.icon, { backgroundColor: platform.color }]}><Text style={styles.glyph}>{platform.icon}</Text></View>
+          <View style={{ flex: 1 }}><Text style={styles.label}>{platform.label}</Text><Text style={[styles.status, connection && { color: colors.success }]}>{connection ? `Connected · ${connection.externalAccountName}` : setup?.configured ? (connectable ? "Ready to connect" : "Configured on server") : "Setup required"}</Text></View>
+        </View>
+        <Text style={styles.intro}>{setup?.note}</Text>
+        {connectable && <TouchableOpacity accessibilityRole="button" disabled={busy !== null || (!connection && !setup?.configured)} style={[styles.button, (busy !== null || (!connection && !setup?.configured)) && { opacity: 0.45 }, connection && { backgroundColor: colors.primarySoft }]} onPress={() => change(platform.id, Boolean(connection))}>
+          {busy === platform.id ? <ActivityIndicator color={colors.primaryDark} /> : <Text style={[styles.buttonText, connection && { color: colors.primaryDark }]}>{connection ? "Disconnect" : setup?.configured ? "Connect account" : "Application credentials required"}</Text>}
+        </TouchableOpacity>}
+      </View>;
+    })}
+  </ScrollView>;
 }
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  content: { padding: 16, paddingBottom: 32 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  intro: { fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 18 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  textCol: { flex: 1, marginRight: 12 },
-  label: { fontSize: 15, fontWeight: "600", color: "#111" },
-  connected: { fontSize: 12, color: "#16a34a", marginTop: 2 },
-  notConnected: { fontSize: 12, color: "#94a3b8", marginTop: 2 },
-  connectButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    minWidth: 88,
-    alignItems: "center",
-  },
-  connectButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  disconnectButton: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  disconnectButtonText: { color: "#dc2626", fontWeight: "600", fontSize: 13 },
+  container: { flex: 1, backgroundColor: colors.bg }, content: { padding: 20, paddingBottom: 32 },
+  title: { fontSize: 26, fontWeight: "800", color: colors.text },
+  intro: { fontSize: 13, color: colors.textMuted, marginTop: 10, marginBottom: 14, lineHeight: 20 },
+  notice: { backgroundColor: colors.primarySoft, color: colors.primaryDark, padding: 14, borderRadius: radius.md, marginBottom: 16, lineHeight: 20 },
+  card: { padding: 18, marginBottom: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg },
+  row: { flexDirection: "row", alignItems: "center", gap: 12 },
+  icon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  glyph: { color: "white", fontWeight: "800", fontSize: 21 },
+  label: { fontSize: 16, fontWeight: "700", color: colors.text }, status: { fontSize: 12, color: colors.textMuted, marginTop: 4 },
+  button: { backgroundColor: colors.primary, borderRadius: radius.md, padding: 12, alignItems: "center" },
+  buttonText: { fontSize: 13, fontWeight: "700", color: "white" },
 });
