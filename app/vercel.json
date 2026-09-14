@@ -1,7 +1,4 @@
 {
   "buildCommand": "npm run build:web",
-  "outputDirectory": "dist",
-  "rewrites": [
-    { "source": "/((?!legal/|tiktoka4EmjXnrLeIO8vzewpRrdG24l4tQ6MIi.txt).*)", "destination": "/index.html" }
-  ]
+  "outputDirectory": "dist"
 }
