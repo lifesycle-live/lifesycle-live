@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts",
-    "youtube:auth": "tsx src/scripts/youtubeAuth.ts"
+    "youtube:auth": "tsx src/scripts/youtubeAuth.ts",
+    "legal:export": "tsx src/scripts/generateLegalPages.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

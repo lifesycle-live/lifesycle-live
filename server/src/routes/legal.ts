@@ -25,7 +25,7 @@ export async function legalRoutes(app: FastifyInstance): Promise<void> {
 const CONTACT_EMAIL = "medinekaynak2906@gmail.com";
 const LAST_UPDATED = "2026-09-13";
 
-const TERMS = `
+export const TERMS = `
 <p><em>Last updated: ${LAST_UPDATED}</em></p>
 
 <p>Lifesycle Live is a CRM-native live-streaming tool built for estate agents. An agent
@@ -58,7 +58,7 @@ unavailable, and platform integrations depend on third-party APIs staying stable
 <p>Questions about these terms: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 `;
 
-const PRIVACY = `
+export const PRIVACY = `
 <p><em>Last updated: ${LAST_UPDATED}</em></p>
 
 <h2>Who we are</h2>
@@ -114,7 +114,7 @@ agent, or as someone who submitted the lead-capture form), email
 <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
 `;
 
-function page(title: string, body: string): string {
+export function page(title: string, body: string): string {
   return (
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<title>Lifesycle Live — ${title}</title></head>` +
