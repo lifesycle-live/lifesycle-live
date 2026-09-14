@@ -169,6 +169,7 @@ export interface Lead {
 export interface Task {
   id: string;
   title: string;
+  description?: string;
   contactId?: string;
   leadId?: string;
   broadcastId?: string;

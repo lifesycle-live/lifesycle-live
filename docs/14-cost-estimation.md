@@ -2,6 +2,18 @@
 
 Illustrative cost model based on current (2026) vendor pricing research. These are directional estimates for planning purposes, not vendor quotes — confirm exact rates against live rate cards before committing budget.
 
+> **Corrected against real infra (Sep 2026, see [PROGRESS.md](../PROGRESS.md)/[CLAUDE.md](../CLAUDE.md) at repo root)**: the server originally planned around Oracle Autonomous DB has actually shipped on **Supabase Postgres**, and the actually-working AI provider is **Groq** (`GroqAiService`, `AI_PROVIDER=groq`) — not a Claude/Anthropic model as this doc previously assumed. Anthropic and OpenAI remain unconfigured stub providers (`UnconfiguredAiService`) that throw rather than run. The sections below have been rewritten around the real stack; streaming-relay and platform-cost sections from the original research are kept where they're still forward-looking (Cloudflare Stream is proposed infra, not yet built — see [11-infrastructure.md](11-infrastructure.md)).
+
+## Database hosting: Supabase Postgres
+
+The server uses Supabase Postgres directly (`server/src/data-source.ts` — TypeORM, `synchronize: true` outside production), replacing the originally-scoped Oracle Autonomous DB. Current published pricing (Sep 2026):
+
+- **Free tier**: $0/month — 500 MB database, 5 GB egress, project pauses after 1 week of inactivity. Fine for local dev/demo (the seeded `agent@lifesycle.example` demo data), not for a live pilot with real agents connected around the clock.
+- **Pro tier**: **$25/month base**, includes 8 GB database storage and a $10/month compute credit (covers one Micro compute instance) — most early-stage projects stay at exactly $25/month. Extra storage beyond 8 GB is metered (~$1.50/mo per 20 GB, ~$5.25/mo per 50 GB tier per published calculators). No project pausing, daily backups, point-in-time recovery available as an add-on [[Supabase pricing breakdown, 2026]](https://flexprice.io/blog/supabase-pricing-breakdown) [[Supabase pricing calculator, 2026]](https://makerkit.dev/pricing-calculator/supabase).
+- **Realistic small-production number**: **$25–75/month** once usage (egress, monthly active users via Auth, a bit of extra storage for broadcast/engagement rows) is included, per multiple 2026 cost breakdowns — this is a **fixed platform cost**, not one that scales per-agent at MVP scale (a few dozen agents' worth of CRM rows is nowhere near the metered thresholds).
+
+This is a step-function/fixed cost (like adapter maintenance below), not a per-agent variable cost — it belongs in the fixed-cost column of the summary table, not the per-agent-month variable model.
+
 ## Infrastructure: streaming relay + storage
 
 Using Cloudflare Stream as the recommended default from [11-infrastructure.md](11-infrastructure.md): ~$1 / 1,000 minutes stored + ~$5 / 1,000 minutes delivered [[Cloudflare Stream pricing]](https://blog.blazingcdn.com/en-us/cloudflare-streaming-pricing-2025-breakdown-live-vod).
@@ -15,18 +27,19 @@ Using Cloudflare Stream as the recommended default from [11-infrastructure.md](1
 
 ## AI processing costs
 
-Model tiering per [10-ai-features.md](10-ai-features.md): classification uses a small/cheap model, generation tasks (talking points, promo copy, summaries) use a mid-tier model, transcription is a separate speech-to-text service.
+Model tiering per [10-ai-features.md](10-ai-features.md): classification uses a small/cheap model, generation tasks (talking points, promo copy, summaries) use a mid-tier model, transcription is a separate speech-to-text service (not yet built — see the empty highlight-clip pipeline noted in [CLAUDE.md](../CLAUDE.md)). The actually-configured provider today is **Groq** (`server/src/services/aiService.ts`, `GroqAiService`, OpenAI-compatible JSON mode), default model `llama-3.3-70b-versatile` (`GROQ_MODEL` env var, `server/src/env.ts:122`). The default `RuleBasedAiService` (no `AI_PROVIDER` set) runs classification with **zero inference cost** — it's a deterministic rules engine, not a model call — so a deployment can run comment classification for $0 and opt into Groq only for generation tasks (talking points, summaries) that genuinely need an LLM.
 
-Reference rates (Aug 2026): Claude Haiku 4.5 ≈ $1/$5 per 1M input/output tokens; Claude Sonnet 5 ≈ $2/$10 per 1M tokens (input/output) through Aug 31, 2026, then $3/M input from Sep 1; Whisper-class transcription ≈ $0.006/minute [[Claude API pricing]](https://benchlm.ai/anthropic/api-pricing) [[LLM API pricing comparison 2026]](https://www.cloudzero.com/blog/llm-api-pricing-comparison/).
+**Important pricing caveat found in current research**: Groq's self-serve, published-rate catalog narrowed on **Aug 26, 2026** — `llama-3.3-70b-versatile` (the server's current default `GROQ_MODEL`) and `llama-3.1-8b-instant` moved to Enterprise-only "Contact Sales" pricing and no longer have a public per-token rate. As of Sep 2026 the self-serve catalog is effectively two models: **GPT OSS 20B** ($0.075/$0.30 per 1M input/output tokens) and **GPT OSS 120B** ($0.15/$0.60 per 1M input/output tokens) [[Groq pricing 2026, eesel]](https://www.eesel.ai/blog/groq-pricing) [[Groq pricing 2026, CloudZero]](https://www.cloudzero.com/blog/groq-pricing/). **Action item, not just a cost note**: confirm at deploy time whether `llama-3.3-70b-versatile` is still reachable on the project's Groq account (grandfathered) or needs to be repointed at `GROQ_MODEL=openai/gpt-oss-20b` (or similar) before launch — this is a live risk to the AI service actually working in production, not just a pricing footnote.
 
-**Per-broadcast AI cost estimate** (30-minute broadcast, ~40 comments):
-- Comment classification (small model, ~40 short calls, ~200 tokens each in+out): well under $0.01
-- Transcription (30 min): 30 × $0.006 ≈ **$0.18**
-- Post-broadcast summary + highlight-clip selection (mid-tier model, a few thousand tokens): ≈ $0.02–$0.05
-- Pre-live talking points/promo copy (mid-tier model, small prompt): ≈ $0.01–$0.02
-- **≈ $0.25–$0.30/broadcast** in AI processing — the same order of magnitude as streaming infra, not a dominant cost driver at this usage scale.
+**Per-broadcast AI cost estimate** (30-minute broadcast, ~40 comments; GPT OSS 20B rates used as the representative self-serve model):
+- Comment classification via `RuleBasedAiService` (default, no `AI_PROVIDER` set): **$0** — deterministic, no model call.
+- Comment classification if routed through Groq instead (~40 short calls, ~200 tokens each in+out ≈ 16K tokens total): well under $0.01 at GPT OSS 20B rates.
+- Transcription (30 min): **not implemented** — no speech-to-text service is wired up yet (see the empty `transcriptUrl` handling and highlight-clip gap noted in [CLAUDE.md](../CLAUDE.md)); budget ≈ $0.18/broadcast (30 × ~$0.006/min) as a placeholder for whichever Whisper-class API is eventually chosen, but treat this as **not yet a real cost** until that pipeline is built.
+- Post-broadcast summary (mid-tier model, a few thousand tokens): ≈ $0.01–$0.02 at GPT OSS 20B rates.
+- Pre-live talking points/promo copy (small prompt): ≈ $0.005–$0.01.
+- **≈ $0.02–$0.04/broadcast today** (classification + summary + talking points only, no transcription yet) — an order of magnitude cheaper than the original estimate once the free rule-based classifier and current Groq rates are used correctly, and **before** any transcription pipeline exists to add cost.
 
-**Per-agent-month AI cost estimate** (8 broadcasts/month): ≈ **$2/agent/month**.
+**Per-agent-month AI cost estimate** (8 broadcasts/month): **well under $1/agent/month** at today's actual configuration (rule-based classification + Groq generation calls only); would rise to roughly the original ≈$2/agent/month estimate once transcription is added.
 
 ## Combined indicative per-agent-month cost (MVP scope)
 

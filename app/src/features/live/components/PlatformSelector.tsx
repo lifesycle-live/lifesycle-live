@@ -27,8 +27,9 @@ interface Props {
  * not part of the go-live selection.
  */
 export function PlatformSelector({ selected, onToggle, connectedPlatforms, onRequestConnect }: Props) {
-  const oneClick = Object.values(PLATFORM_CATALOG).filter((p) => p.mode === "one-click");
-  const assisted = Object.values(PLATFORM_CATALOG).filter((p) => p.mode === "assisted");
+  const ordered = Object.values(PLATFORM_CATALOG).sort((a, b) => Number(connectedPlatforms.includes(b.id)) - Number(connectedPlatforms.includes(a.id)));
+  const oneClick = ordered.filter((p) => p.mode === "one-click");
+  const assisted = ordered.filter((p) => p.mode === "assisted");
 
   return (
     <View>
@@ -40,7 +41,7 @@ export function PlatformSelector({ selected, onToggle, connectedPlatforms, onReq
         onToggle={onToggle}
         onRequestConnect={onRequestConnect}
       />
-      <AssistedGroup title="Account links — publishing not integrated" platforms={assisted} connectedPlatforms={connectedPlatforms} />
+      <AssistedGroup title="Other connected accounts · separate broadcast setup" platforms={assisted} connectedPlatforms={connectedPlatforms} />
     </View>
   );
 }
@@ -101,7 +102,7 @@ function AssistedGroup({
             <View key={platform.id} style={[styles.chip, styles.chipInfo]}>
               <View style={[styles.dot, { backgroundColor: platform.color }]} />
               <Text style={styles.chipLabel}>{platform.label}</Text>
-              <Text style={styles.infoTag}>{isConnected ? "✓" : "—"}</Text>
+              <Text style={styles.infoTag}>{isConnected ? "Linked · setup needed" : "Not linked"}</Text>
             </View>
           );
         })}

@@ -3,11 +3,18 @@ import { getYoutubeAccessToken, youtubeConfigured } from "../services/youtubeOAu
 import { IngestInfo, PlatformAdapter, PlatformNotConfiguredError, PublishContext, RawComment } from "./types.js";
 
 const API = "https://www.googleapis.com/youtube/v3";
+// This adapter uses one project-level credential. Stop all its requests after
+// quota exhaustion until Google's next Pacific calendar day (DST-aware).
+const quotaDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+let exhaustedDay: string | undefined;
+const quotaMessage = 'YouTube API quota is exhausted for this Google Cloud project. New broadcasts cannot start until the quota resets at midnight Pacific Time or Google approves more quota. Reconnecting your YouTube account will not reset it.';
+const statusRequests = new Map<string, { expiresAt: number; result: Promise<string> }>();
 
 async function yt<T>(
   path: string,
   init: { method?: string; query?: Record<string, string>; body?: unknown } = {},
 ): Promise<T> {
+  if (exhaustedDay === quotaDay()) throw new Error(quotaMessage);
   const token = await getYoutubeAccessToken();
   const url = `${API}${path}${init.query ? `?${new URLSearchParams(init.query)}` : ""}`;
   const res = await fetch(url, {
@@ -19,7 +26,18 @@ async function yt<T>(
     body: init.body ? JSON.stringify(init.body) : undefined,
   });
   if (!res.ok) {
-    throw new Error(`YouTube API ${init.method ?? "GET"} ${path} failed (${res.status}): ${await res.text()}`);
+    const text = await res.text();
+    let reasons: string[] = [];
+    try {
+      const payload = JSON.parse(text) as { error?: { errors?: { reason?: string }[] } };
+      reasons = payload.error?.errors?.map(error => error.reason ?? '') ?? [];
+    } catch { /* Keep the original diagnostic for non-JSON errors. */ }
+    if (reasons.includes('quotaExceeded') || reasons.includes('dailyLimitExceeded')) {
+      exhaustedDay = quotaDay();
+      statusRequests.clear();
+      throw new Error(quotaMessage);
+    }
+    throw new Error(`YouTube API ${init.method ?? "GET"} ${path} failed (${res.status}): ${text}`);
   }
   return (await res.json()) as T;
 }
@@ -38,12 +56,20 @@ async function yt<T>(
  * the liveChatId captured at publish time — see docs/05-api-research.md.
  */
 export class YoutubeAdapter implements PlatformAdapter {
+  private readonly chatPollState = new Map<string, { nextPageToken?: string; nextAllowedAt: number }>();
   async getStatus(ingest: IngestInfo): Promise<string> {
     const id = ingest.providerRef?.broadcastId;
     if (!id) throw new Error("Missing YouTube broadcast reference");
-    const data = await yt<{ items: { status: { lifeCycleStatus: string } }[] }>("/liveBroadcasts", { query: { part: "status", id } });
-    if (!data.items[0]) throw new Error("YouTube broadcast unavailable");
-    return data.items[0].status.lifeCycleStatus;
+    if (exhaustedDay === quotaDay()) throw new Error(quotaMessage);
+    const cached = statusRequests.get(id);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+    for (const [key, entry] of statusRequests) if (entry.expiresAt <= Date.now()) statusRequests.delete(key);
+    const result = yt<{ items: { status: { lifeCycleStatus: string } }[] }>("/liveBroadcasts", { query: { part: "status", id } }).then(data => {
+      if (!data.items[0]) throw new Error("YouTube broadcast unavailable");
+      return data.items[0].status.lifeCycleStatus;
+    });
+    statusRequests.set(id, { expiresAt: Date.now() + 30000, result });
+    return result;
   }
   readonly platform = "youtube" as const;
   readonly commentFreshness = "live" as const;
@@ -137,6 +163,8 @@ export class YoutubeAdapter implements PlatformAdapter {
   async end(_broadcastId: string, _context: PublishContext, ingest?: IngestInfo): Promise<void> {
     if (!this.configured) throw new PlatformNotConfiguredError(this.platform);
     const ytBroadcastId = ingest?.providerRef?.broadcastId;
+    const liveChatId = ingest?.providerRef?.liveChatId;
+    if (liveChatId) this.chatPollState.delete(liveChatId);
     if (!ytBroadcastId) return;
     // Only a broadcast that actually went live can transition to complete;
     // if the encoder never connected, just leave it (auto-stop handles it).
@@ -160,14 +188,32 @@ export class YoutubeAdapter implements PlatformAdapter {
     const liveChatId = ingest.providerRef?.liveChatId;
     if (!liveChatId) return [];
 
+    const pollState = this.chatPollState.get(liveChatId);
+    if (pollState && Date.now() < pollState.nextAllowedAt) return [];
+    // Also back off on failed requests; otherwise the one-second scheduler
+    // retries a denied/ended chat indefinitely and consumes more quota.
+    this.chatPollState.set(liveChatId, { ...pollState, nextAllowedAt: Date.now() + 60000 });
+
     const data = await yt<{
+      nextPageToken?: string;
+      pollingIntervalMillis?: number;
       items: {
         id: string;
         snippet: { displayMessage?: string; publishedAt: string };
         authorDetails: { displayName: string };
       }[];
     }>("/liveChat/messages", {
-      query: { part: "snippet,authorDetails", liveChatId, maxResults: "200" },
+      query: {
+        part: "snippet,authorDetails",
+        liveChatId,
+        maxResults: "200",
+        ...(pollState?.nextPageToken ? { pageToken: pollState.nextPageToken } : {}),
+      },
+    });
+
+    this.chatPollState.set(liveChatId, {
+      nextPageToken: data.nextPageToken,
+      nextAllowedAt: Date.now() + Math.max(10000, data.pollingIntervalMillis ?? 10000),
     });
 
     return data.items

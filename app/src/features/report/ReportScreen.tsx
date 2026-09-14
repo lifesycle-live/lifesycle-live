@@ -1,4 +1,5 @@
 import React from "react";
+import { TaskComposer } from "./TaskComposer";
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -113,7 +114,9 @@ export function ReportScreen({ navigation }: Props) {
         ))
       )}
 
+      {toggleTask.isError && <Text accessibilityRole="alert" style={styles.empty}>{toggleTask.error.message}</Text>}
       <Text style={styles.sectionLabel}>TASKS</Text>
+      <TaskComposer />
       {tasks.length === 0 ? (
         <Text style={styles.empty}>No tasks yet.</Text>
       ) : (
@@ -146,6 +149,7 @@ function TaskRow({
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.rowTitle, task.done && styles.rowTitleDone]}>{task.title}</Text>
+        {task.description ? <Text style={styles.rowMeta}>{task.description}</Text> : null}
         {task.broadcastId ? <Text style={styles.rowMeta}>From live broadcast</Text> : null}
       </View>
     </TouchableOpacity>

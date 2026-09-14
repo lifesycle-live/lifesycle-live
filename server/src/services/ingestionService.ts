@@ -8,7 +8,10 @@ import { resolveAgentConnection } from "../oauth/refresh.js";
 import { aiService } from "./aiService.js";
 import { buildLeadCaptureUrl } from "../routes/leadCapture.js";
 
-const POLL_INTERVAL_MS = 6000;
+// Adapters may internally honour a provider-mandated minimum interval (YouTube
+// does this via pollingIntervalMillis). The short scheduler keeps new messages
+// moving as soon as each provider allows without blindly hammering its API.
+const POLL_INTERVAL_MS = 1000;
 
 interface MinimalLogger {
   info(obj: unknown, msg?: string): void;
@@ -18,6 +21,7 @@ interface MinimalLogger {
 
 interface PollState {
   timer: NodeJS.Timeout;
+  polling: boolean;
   /** In-process dedupe cache, keyed `${platform}:${externalId}` — avoids a DB round-trip for comments already handled this run. */
   seenExternalIds: Set<string>;
   /** Per-platform "fetch comments after this timestamp" cursor. */
@@ -49,11 +53,16 @@ export function startIngestion(broadcast: Broadcast, log: MinimalLogger): void {
   // first poll tick fires a near-immediate duplicate.
   const now = Date.now();
   const state: PollState = {
+    polling: false,
     seenExternalIds: new Set(),
     cursor: {},
     lastCtaAt: Object.fromEntries(platforms.map((p) => [p, now])) as Partial<Record<PlatformId, number>>,
     timer: setInterval(() => {
-      void pollOnce(broadcast.id, broadcast.agentId, platforms, ingestByPlatform, state, log);
+      if (state.polling) return;
+      state.polling = true;
+      void pollOnce(broadcast.id, broadcast.agentId, platforms, ingestByPlatform, state, log)
+        .catch(err => log.warn({ err, broadcastId: broadcast.id }, 'engagement poll failed'))
+        .finally(() => { state.polling = false; });
     }, POLL_INTERVAL_MS),
   };
   activePolls.set(broadcast.id, state);

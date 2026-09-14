@@ -14,6 +14,7 @@ import { serializeBroadcast, serializeBroadcastSummary } from "../serialize.js";
 import { startIngestion, stopIngestion } from "../services/ingestionService.js";
 import { buildLeadCaptureUrl } from "./leadCapture.js";
 import { YoutubeAdapter } from "../adapters/youtube.js";
+import { stopRelay } from '../services/videoRelay.js';
 
 /**
  * Only platforms with a registered OAuthProvider (oauth/registry.ts) need a
@@ -94,6 +95,17 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (failures.length > 0) {
+      // Partial failure: some platforms already went live (a real Facebook/
+      // YouTube live video may exist) before another platform failed. Since
+      // the whole broadcast is rejected, don't leave those live videos
+      // dangling — best-effort end() each one the same way /end does.
+      for (const platform of Object.keys(ingest) as PlatformId[]) {
+        const adapter = getAdapter(platform);
+        if (!adapter) continue;
+        buildPublishContext(agentIdOf(request), platform)
+          .then((context) => adapter.end(broadcast.id, context, ingest[platform] as IngestInfo))
+          .catch((err) => app.log.warn({ err, broadcastId: broadcast.id, platform }, "cleanup end() after partial start failure failed"));
+      }
       broadcast.status = "failed";
       await broadcasts.save(broadcast);
       return reply.code(422).send({
@@ -131,9 +143,10 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post<{ Params: { id: string } }>("/broadcasts/:id/end", { preHandler: requireAuth }, async (request, reply) => {
-    const broadcast = await broadcasts.findOne({ where: { id: request.params.id }, relations: ["property"] });
+    const broadcast = await broadcasts.findOne({ where: { id: request.params.id, agentId: agentIdOf(request) }, relations: ["property"] });
     if (!broadcast) return reply.code(404).send({ error: "Broadcast not found" });
 
+    stopRelay(broadcast.id);
     const platforms = JSON.parse(broadcast.platforms) as PlatformId[];
     const ingestByPlatform = (broadcast.ingest ? JSON.parse(broadcast.ingest) : {}) as Partial<
       Record<PlatformId, IngestInfo>

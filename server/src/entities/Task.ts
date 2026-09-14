@@ -13,6 +13,12 @@ export class Task {
   @Column({ type: "varchar", length: 1000 })
   title!: string;
 
+  @Column({ type: "text", nullable: true })
+  description?: string | null;
+
+  @Column({ type: "varchar", length: 36, nullable: true })
+  agentId?: string | null;
+
   @Column({ type: "varchar", length: 36, nullable: true })
   contactId?: string | null;
 

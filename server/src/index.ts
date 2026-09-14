@@ -13,6 +13,7 @@ import { platformConnectionRoutes } from "./routes/platformConnections.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { legalRoutes } from "./routes/legal.js";
 import { leadCaptureRoutes } from "./routes/leadCapture.js";
+import { videoRelayRoutes } from './routes/videoRelay.js';
 
 const app = Fastify({ logger: true });
 
@@ -26,6 +27,7 @@ app.get("/health", async () => ({ ok: true, db: AppDataSource.isInitialized }));
 await app.register(authRoutes);
 await app.register(propertyRoutes);
 await app.register(broadcastRoutes);
+await app.register(videoRelayRoutes);
 await app.register(contactRoutes);
 await app.register(leadRoutes);
 await app.register(taskRoutes);

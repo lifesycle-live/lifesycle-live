@@ -2,6 +2,8 @@
 
 Full lifecycle journeys covering the three user types identified in [01-product-discovery.md](01-product-discovery.md): the agent, the brokerage admin, and the viewer/buyer. Diagrams use Mermaid.
 
+> **2026-09 update — reconciled with the actual build.** Sections 1–6 below are the original Phase 2 journeys and are kept as-is; they remain the right *shape*. Section 7 ("Detailed lifecycle journey, as-built") replaces the "edge-case journeys (to design in detail during build)" placeholder at the bottom of this doc with real, step-by-step journeys grounded in the current code (`server/src/routes/broadcasts.ts`, `services/ingestionService.ts`, `routes/engagement.ts`, `routes/leadCapture.ts`, `app/src/features/live/`) and in `PROGRESS.md`. Where the original journey text described something not yet true of the running system, that's flagged inline rather than silently corrected, per this repo's "honest scaffold" rule against fabricating a working flow.
+
 ## 1. Core lifecycle: agent going live (one-click platform, e.g. Facebook/YouTube)
 
 ```mermaid

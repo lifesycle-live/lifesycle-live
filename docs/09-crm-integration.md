@@ -2,37 +2,137 @@
 
 How `EngagementEvent` objects (defined in [06-system-architecture.md](06-system-architecture.md)) become real Lifesycle CRM records: leads, comments/chats, appointments, valuations, and follow-up tasks.
 
+> **2026-09-14 revision note.** This doc was originally written against a hypothetical CRM
+> object model before any code existed. The server now has a real, working implementation
+> (`server/src/entities/`, `server/src/routes/engagement.ts`, `server/src/routes/leadCapture.ts`)
+> and comment→lead/task has been verified end-to-end on a live YouTube broadcast (see
+> `PROGRESS.md`, 2026-09-13). This revision grounds every claim below in that actual model,
+> marks what's implemented vs. still proposed, and calls out where the original proposal
+> diverged from what got built and why.
+
+## Current implementation snapshot
+
+The entities that exist today (`server/src/entities/`) are: `Agent`, `Property`, `Contact`,
+`Broadcast`, `EngagementEvent`, `Lead`, `Task`, `ActivityItem`, `PlatformConnection`. There is
+**no `Appointment` entity and no separate `Asset`/valuation-workflow entity** — see "Gaps"
+below. The end-to-end flow that is actually wired up and verified:
+
+1. `ingestionService.ts` polls each configured platform adapter every ~1s while a broadcast is
+   `live`, pulls new comments, and calls `aiService.classifyIntent(text)` for each one.
+2. Every comment is saved as an `EngagementEvent` row — `intent`, `intentConfidence`,
+   `authorName`, `text`, `platform`, `externalId` (for dedupe), `dismissed` — **regardless of
+   classification outcome**. This matches the original "append-only log, retained for audit"
+   design below.
+3. The app polls `GET /broadcasts/:id/engagement` and renders the feed; nothing is created in
+   the CRM automatically yet. The agent taps **"Convert to lead"** or **"Convert to task"** on
+   an individual `EngagementEvent` (`server/src/routes/engagement.ts`,
+   `POST /engagement/:id/convert-to-lead` / `convert-to-task`) — this is a manual,
+   agent-confirmed action for every single event today, not an AI-driven or threshold-driven
+   auto-create. See "Admin configuration" below for how this compares to the original proposal.
+4. Separately, a public, unauthenticated contact-capture form (`GET /go/:id`,
+   `server/src/routes/leadCapture.ts`) is the actual mechanism for getting a viewer's phone/email
+   — see "Contact info capture" below, which replaces the DM-based proposal originally written
+   here.
+
 ## Object mapping
 
-| Broadcast-side concept | Maps to CRM object | Notes |
-|---|---|---|
-| A broadcast itself | New `Broadcast` object, linked to a `Property` and an `Agent` | Analogous to how a portal listing or a web page is already a marketing-source object in most CRMs |
-| Raw comment/reaction | `EngagementEvent` (append-only log) | Retained regardless of classification outcome, for audit and AI-training/eval purposes |
-| Comment classified "high intent" (question, viewing request, valuation ask) | `Lead` (new contact) or `Activity` logged against an existing `Contact` | De-duplication first: match platform identity → known contact before creating a new Lead |
-| Comment classified "viewing request" specifically | `Lead` + `Task` ("schedule viewing") | Optionally auto-suggests an `Appointment` slot from the agent's existing calendar integration |
-| Comment classified "valuation ask" | `Lead` tagged `valuation-interest` | Handed to Lifesycle's existing valuation request workflow rather than a new one |
-| Low-intent reaction/small talk | Aggregated into broadcast-level analytics only | Explicitly *not* created as individual CRM records — protects lead-quality metrics from dilution |
-| Post-broadcast recording | `Asset` (video) linked to the `Broadcast` and `Property` | Feeds AI post-processing (transcript, clips) per [10-ai-features.md](10-ai-features.md) |
+| Broadcast-side concept | Maps to CRM object | Status | Notes |
+|---|---|---|---|
+| A broadcast itself | `Broadcast`, linked to a `Property` and an `Agent` | **Implemented** | `Broadcast.platforms`/`ingest` are JSON-encoded text columns (see `CLAUDE.md`); `status` is `scheduled` \| `live` \| `ended` \| `failed` |
+| Raw comment/reaction | `EngagementEvent` (append-only log) | **Implemented** | Saved for every comment regardless of intent, keyed by `broadcastId` + `platform` + `externalId` for dedupe; carries `intent`/`intentConfidence` from `aiService.classifyIntent` |
+| Comment classified high-intent (`question`, `viewing_request`, `valuation_ask`) | New `Contact` + `Lead` (`source: "broadcast"`) via agent tapping "Convert to lead" | **Implemented, manual only** | `engagement.ts` currently creates a **fresh `Contact` from `authorName` every time** — no de-dup match against existing contacts yet (see "De-duplication" below) |
+| Comment classified `viewing_request` specifically | `Task` via agent tapping "Convert to task" | **Implemented, but generic** | `convert-to-task` creates a plain `Task` titled `Follow up with {authorName}: "{text}"` — there is no intent-specific branching (no auto Appointment, no viewing-specific template) |
+| Comment classified `valuation_ask` | Nothing intent-specific happens beyond the same generic `Lead`/`Task` path | **Gap — see "Valuation and appointment gap" below** | The original proposal's "handed to Lifesycle's existing valuation request workflow" assumes a workflow that doesn't exist in this codebase; there is no separate valuation object or routing |
+| Low-intent reaction/small talk (`other`, `spam`) | Stays an `EngagementEvent` only; never surfaced for conversion | **Implemented** | The app's priority queue only surfaces high-intent events; low-intent ones sit in the feed but nothing forces the agent to act on them — the original "protects lead-quality metrics from dilution" intent holds |
+| Viewer-submitted contact form (`/go/:id`) | New `Contact` + `Lead` (`source: "form"`) | **Implemented** | This is the actual, working contact-capture path — see below |
+| Post-broadcast recording | `Broadcast.recordingUrl` / `Broadcast.transcriptUrl` (nullable text columns) | **Column exists, pipeline does not** | No `Asset` entity; these are just optional URL columns on `Broadcast` with nothing populating them yet — see [10-ai-features.md](10-ai-features.md) "After the broadcast" |
 
 ## De-duplication logic
 
-1. Match the commenter's platform identity (page-scoped user ID, channel ID, etc.) against any existing `Contact` record that has previously interacted via the same platform.
-2. If no match, check for a fuzzy match on any volunteered contact info in the comment text itself (phone/email/name pattern) against existing `Contact` records.
-3. If still no match, create a new `Contact` + `Lead`, tagged with the source platform and broadcast ID for attribution.
+**Status: proposed, not implemented.** The original 3-step plan below is unchanged as a
+target design, but `server/src/routes/engagement.ts` today does none of it — the code comment
+at the `convert-to-lead` handler is explicit about why:
 
-This mirrors de-duplication logic CRMs already run for web-form and portal-enquiry leads — no new dedup mechanism is being invented, just a new event source feeding the existing one.
+> "No real per-platform contact identity resolution yet (needs the platform adapters to be
+> live) — creates a fresh contact from the author name for now rather than guessing a de-dup
+> match."
 
-## Contact info capture via DM
+So right now, converting two different `EngagementEvent`s from the same viewer (even within
+the same broadcast) produces two separate `Contact` rows. Proposed steps, unchanged from the
+original design:
 
-Platform APIs expose a commenter's *platform identity* (page-scoped user ID, channel ID) but never their phone number or email — see [05-api-research.md](05-api-research.md). Real contact info only ever comes from the viewer volunteering it, so the product actively prompts for it rather than passively waiting for it to appear in a comment:
+1. Match the commenter's platform identity (page-scoped user ID, channel ID, etc.) against any
+   existing `Contact` record that has previously interacted via the same platform.
+2. If no match, check for a fuzzy match on any volunteered contact info in the comment text
+   itself (phone/email/name pattern) against existing `Contact` records.
+3. If still no match, create a new `Contact` + `Lead`, tagged with the source platform and
+   broadcast ID for attribution.
 
-1. **Trigger**: the AI intent classifier (see [10-ai-features.md](10-ai-features.md)) flags a comment as "viewing request" or "valuation ask."
-2. **Automated DM**: the platform's private-reply mechanism sends that same commenter an automated direct message — e.g. Facebook/Instagram `POST /{comment-id}/private_replies` — containing either a short form link or a plain-language prompt to reply with their name/phone/email directly in the DM thread.
-3. **Capture**: whichever path the user takes, the resulting contact info is captured — form submission via a webhook to Lifesycle's backend, or free-text DM reply parsed the same way comment text is already parsed for volunteered contact info (see De-duplication logic, step 2).
-4. **Attach, don't duplicate**: the captured phone/email is written onto the *same* `Contact`/`Lead` record that was created (or matched) from the original triggering comment — matched via the platform identity (page-scoped user ID / channel ID) carried through from that comment's `EngagementEvent`, never a new, separate record. This is the same identity key the de-duplication logic already uses, so no new matching mechanism is needed — the DM reply is just another `EngagementEvent` on the same thread.
-5. **Platforms without a private-reply API** (TikTok, and Instagram/Facebook when the feature isn't available for a given account type): fall back to an automated public comment reply containing the form link instead of a DM — same capture and attach logic once the viewer clicks through, just a lower-privacy trigger step.
+**Concrete path to close this gap**, grounded in what the adapters already return
+(`fetchComments` in `server/src/adapters/*.ts` returns `authorName` + `externalId`, i.e. the
+platform's comment ID, not a stable per-viewer user ID for every platform): add an
+`externalAuthorId` column to `Contact` (nullable, `(platform, externalAuthorId)` unique
+index) and populate it wherever the platform adapter's comment payload actually carries a
+stable per-user id (YouTube's `authorChannelId` does; Facebook Graph API comment payloads
+carry a page-scoped `from.id` when `pages_read_engagement` permission covers it). Where the
+adapter doesn't expose one, `convert-to-lead` falls back to the current author-name-only
+behavior — this is a strictly additive change, no migration risk to the existing flow. This
+mirrors de-duplication logic CRMs already run for web-form and portal-enquiry leads — no new
+dedup mechanism is being invented, just a new event source feeding the existing one.
 
-This keeps the lawful-basis story clean per [07-risk-analysis.md](07-risk-analysis.md): the contact info entering the CRM was actively and knowingly provided by the viewer in response to a direct prompt, not scraped or inferred.
+## Contact info capture
+
+> **2026-09-14 correction.** The original proposal below was a DM-based capture flow
+> (Facebook/Instagram `private_replies`). That was never built. What actually ships and is
+> verified end-to-end is a simpler, platform-agnostic **public form link**, because it works
+> identically across every platform (including ones with no private-reply API at all, like
+> YouTube and Zoom) rather than needing a bespoke integration per platform. The DM approach is
+> retained below as a possible V2 enhancement, not the current design.
+
+**What's implemented today:**
+
+Platform APIs expose a commenter's *platform identity* but never their phone number or email
+— see [05-api-research.md](05-api-research.md). Lifesycle Live gets real contact info by
+actively prompting for it:
+
+1. The moment a broadcast goes live, `routes/broadcasts.ts` calls each adapter's
+   `postCallToAction`, which posts a comment/chat message containing a link —
+   `buildLeadCaptureUrl()` in `server/src/routes/leadCapture.ts` builds
+   `{PUBLIC_BASE_URL}/go/:broadcastId`. Adapters that declare `ctaRepeatMs`
+   (`ingestionService.ts`) get this message re-posted periodically so it doesn't scroll out of
+   a fast-moving chat.
+2. `GET /go/:id` serves a small, dependency-free HTML+JS page (rendered server-side, no
+   framework) showing the property photo/address/price and a name + email/phone + message
+   form, gated behind an explicit contact-consent checkbox (`CONTACT_REQUEST_TEXT`).
+3. `POST /public/broadcasts/:id/leads` (unauthenticated, since the viewer is never logged in)
+   validates the submission with zod, requires at least one of email/phone, and — in one
+   transaction — creates a `Contact`, a `Lead` (`source: "form"`, `sourcePlatform: null`), and
+   two `ActivityItem` rows: one summarizing the submission and one recording the exact consent
+   text/version/timestamp agreed to, for the lawful-basis story in
+   [07-risk-analysis.md](07-risk-analysis.md).
+4. This `Lead` is **not** linked back to the `EngagementEvent`/comment that prompted the
+   viewer to click through — there's no shared identity between an anonymous form submission
+   and the platform comment identity it originated from. A viewer who both comments *and* fills
+   in the form today gets two disconnected CRM records: an unconverted `EngagementEvent` and a
+   separate form-sourced `Lead`. Fixing this needs the same `externalAuthorId` linkage proposed
+   under "De-duplication logic" above, plus carrying a correlating token through the CTA link
+   (e.g. `/go/:broadcastId?ref=<engagementEventId>` when the CTA is sent in reply to a specific
+   high-intent comment rather than as a broadcast-wide pinned message).
+
+**Proposed V2 enhancement — DM capture** (not built, would need each platform's private-reply
+API and a webhook receiver Lifesycle doesn't have yet):
+
+1. **Trigger**: the AI intent classifier flags a comment `viewing_request` or `valuation_ask`.
+2. **Automated DM**: the platform's private-reply mechanism sends that commenter an automated
+   direct message — e.g. Facebook/Instagram `POST /{comment-id}/private_replies` — containing
+   either the same form link or a plain-language prompt to reply with their name/phone/email.
+3. **Capture**: form submission via the same `/go/:id` webhook, or a free-text DM reply parsed
+   the same way comment text is already parsed for volunteered contact info.
+4. **Attach, don't duplicate**: requires the `externalAuthorId` linkage above to attach the DM
+   reply to the same `Contact`/`Lead` rather than creating a new one.
+5. **Platforms without a private-reply API** (TikTok, and Instagram/Facebook when the feature
+   isn't available for a given account type) would keep using the public-comment CTA that
+   already ships today — so this enhancement is additive, not a replacement.
 
 ## Attribution
 

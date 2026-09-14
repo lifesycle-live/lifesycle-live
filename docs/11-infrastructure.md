@@ -2,6 +2,15 @@
 
 Covers the Media Ingest / Restream Relay layer from [06-system-architecture.md](06-system-architecture.md): streaming, storage, recordings, scalability, reliability.
 
+> **2026-09 deepening note**: the original version of this doc covered the RTMPS media relay
+> in the abstract. The implemented server (`server/`) has since exposed a second, more
+> immediate infrastructure gap: comment/engagement **ingestion** — not the media relay — is
+> the part of the system that is actually built and running today, and its current
+> architecture is a single point of failure. This revision adds a concrete remediation path
+> for that, reconciled against the real code in `server/src/services/ingestionService.ts`,
+> `server/src/data-source.ts`, and `server/src/env.ts`. Note also: the DB is **Supabase
+> Postgres**, not Oracle — any Oracle-era assumption elsewhere in the doc set is stale.
+
 ## Build vs. buy: RTMPS ingest/relay
 
 | Option | Pros | Cons |

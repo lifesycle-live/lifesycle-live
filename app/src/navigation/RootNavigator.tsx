@@ -6,6 +6,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "rea
 
 import { LoginScreen } from "../features/auth/LoginScreen";
 import { useAuthStore } from "../state/authStore";
+import { useStudioLayout } from "../state/studioLayout";
 
 import { GoLiveSetupScreen } from "../features/live/GoLiveSetupScreen";
 import { PropertyDetailScreen } from "../features/live/PropertyDetailScreen";
@@ -103,6 +104,7 @@ function ReportStackNavigator() {
 
 export function RootNavigator() {
   const status = useAuthStore((s) => s.status);
+  const landscape = useStudioLayout(s => s.landscape);
 
   if (status === "loading") {
     return (
@@ -124,6 +126,7 @@ export function RootNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
+            display: landscape ? 'none' : 'flex',
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
             height: 74,

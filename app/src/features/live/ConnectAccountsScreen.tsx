@@ -33,7 +33,7 @@ export function ConnectAccountsScreen() {
     <Text style={styles.title}>Your channels</Text>
     <Text style={styles.intro}>Link the accounts you manage. Each platform has its own broadcast and comment permissions.</Text>
     {notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
-    {Object.values(PLATFORM_CATALOG).map(platform => {
+    {Object.values(PLATFORM_CATALOG).sort((a, b) => Number(connected.has(b.id) || (b.id === "youtube" && available.get(b.id)?.configured)) - Number(connected.has(a.id) || (a.id === "youtube" && available.get(a.id)?.configured))).map(platform => {
       const connection = connected.get(platform.id);
       const setup = available.get(platform.id);
       const connectable = CONNECTABLE_PLATFORMS.includes(platform.id);
@@ -43,6 +43,8 @@ export function ConnectAccountsScreen() {
           <View style={{ flex: 1 }}><Text style={styles.label}>{platform.label}</Text><Text style={[styles.status, connection && { color: colors.success }]}>{connection ? `Connected · ${connection.externalAccountName}` : setup?.configured ? (connectable ? "Ready to connect" : "Configured on server") : "Setup required"}</Text></View>
         </View>
         <Text style={styles.intro}>{setup?.note}</Text>
+        {platform.id === 'facebook' && <Text style={styles.intro}>If Meta shows “Previously shared” and disables your Page, check the Page access permissions. The signed-in person must have the required control of that Page; portfolio membership alone may not be enough.</Text>}
+        {connection && connectable && <TouchableOpacity accessibilityRole="button" disabled={busy !== null} style={[styles.button, { marginBottom: 8 }]} onPress={() => change(platform.id, false)}><Text style={styles.buttonText}>Reconnect / update permissions</Text></TouchableOpacity>}
         {connectable && <TouchableOpacity accessibilityRole="button" disabled={busy !== null || (!connection && !setup?.configured)} style={[styles.button, (busy !== null || (!connection && !setup?.configured)) && { opacity: 0.45 }, connection && { backgroundColor: colors.primarySoft }]} onPress={() => change(platform.id, Boolean(connection))}>
           {busy === platform.id ? <ActivityIndicator color={colors.primaryDark} /> : <Text style={[styles.buttonText, connection && { color: colors.primaryDark }]}>{connection ? "Disconnect" : setup?.configured ? "Connect account" : "Application credentials required"}</Text>}
         </TouchableOpacity>}

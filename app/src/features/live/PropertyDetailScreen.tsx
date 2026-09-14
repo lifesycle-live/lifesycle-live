@@ -8,8 +8,9 @@ import {
   View,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useCameraPermissions } from "expo-camera";
 import { getAiPrep, getProperty, startBroadcast } from "../../api/broadcasts";
-import { getPlatformConnections } from "../../api/platformConnections";
+import { getPlatformAvailability, getPlatformConnections } from "../../api/platformConnections";
 import { QueryBoundary } from "../../components/QueryBoundary";
 import { ONE_CLICK_PLATFORMS, PlatformId } from "../../types/models";
 import { AiPrepPanel } from "./components/AiPrepPanel";
@@ -28,6 +29,7 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
   const [platforms, setPlatforms] = useState<PlatformId[] | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<{ message: string; details?: string[] } | null>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const setActiveBroadcast = useLiveSessionStore((s) => s.setActiveBroadcast);
 
   const { data: property, isLoading, isError, error, refetch } = useQuery({
@@ -46,20 +48,31 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
   });
   // YouTube doesn't have per-agent OAuth yet (TASKS.md Day 2) — the server
   // authenticates it with a single .env refresh token, so there's never a
-  // PlatformConnection row for it. Treat it as always available here rather
-  // than gating it behind "Connect first" like the per-agent platforms.
+  // PlatformConnection row for it. Only treat it as available once the
+  // server actually reports YOUTUBE_* as configured — otherwise it gets
+  // auto-selected alongside a real connection (e.g. Facebook) and fails the
+  // whole broadcast, since /broadcasts requires every selected platform to
+  // succeed.
+  const { data: availability } = useQuery({
+    queryKey: ["platform-availability"],
+    queryFn: getPlatformAvailability,
+  });
+  const youtubeConfigured = availability?.find((a) => a.platform === "youtube")?.configured ?? false;
   const connectedPlatforms = [
-    ...new Set([...(connections ?? []).map((c) => c.platform), "youtube" as PlatformId]),
+    ...new Set([
+      ...(connections ?? []).map((c) => c.platform),
+      ...(youtubeConfigured ? (["youtube"] as PlatformId[]) : []),
+    ]),
   ];
 
   // Default the picker to whichever one-click platforms are already
   // connected, once we know — a hardcoded default would pre-select
   // platforms the agent may not have connected yet.
   useEffect(() => {
-    if (platforms === null && connections !== undefined) {
+    if (platforms === null && connections !== undefined && availability !== undefined) {
       setPlatforms(ONE_CLICK_PLATFORMS.filter((p) => connectedPlatforms.includes(p)));
     }
-  }, [connections]);
+  }, [connections, availability]);
   const selectedPlatforms = platforms ?? [];
 
   function togglePlatform(platform: PlatformId) {
@@ -76,6 +89,11 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
     setIsStarting(true);
     setStartError(null);
     try {
+      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
+      if (!permission.granted) {
+        setStartError({ message: "Camera access is required before opening the live studio." });
+        return;
+      }
       const broadcast = await startBroadcast(propertyId, selectedPlatforms);
       setActiveBroadcast(broadcast);
       navigation.replace("LiveDashboard", { broadcastId: broadcast.id });
@@ -163,9 +181,7 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
                 </Text>
               ))}
               <Text style={styles.errorHint}>
-                Live streaming needs a configured platform adapter (Facebook / YouTube / Zoom API keys) —
-                this scaffold ships them as stubs. Run the app with an empty EXPO_PUBLIC_LIFESYCLE_API_URL
-                to walk the full flow on demo data.
+                The broadcast could not start. Resolve the platform error above before trying again.
               </Text>
             </View>
           ) : null}

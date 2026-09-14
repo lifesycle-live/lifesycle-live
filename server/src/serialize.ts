@@ -109,6 +109,7 @@ export function serializeTask(t: Task) {
   return {
     id: t.id,
     title: t.title,
+    description: t.description ?? undefined,
     contactId: t.contactId ?? undefined,
     leadId: t.leadId ?? undefined,
     broadcastId: t.broadcastId ?? undefined,
