@@ -70,7 +70,7 @@ export class FacebookOAuthProvider implements OAuthProvider {
       // Configuration itself (App Dashboard -> Facebook Login for Business).
       params.set("config_id", env.facebook.loginConfigId);
     } else {
-      params.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts,publish_video");
+      params.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts,publish_video,instagram_basic,instagram_manage_comments");;
     }
     return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
   }
