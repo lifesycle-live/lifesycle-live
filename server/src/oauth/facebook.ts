@@ -51,6 +51,20 @@ async function fetchManagedPages(userAccessToken: string): Promise<FacebookPage[
   return data.data;
 }
 
+/**
+ * One Page by id. /me/accounts does not enumerate Business Portfolio-owned
+ * Pages even when pages_show_list is granted and the same token can read the
+ * Page node directly — confirmed by testing (2026-09-23). FACEBOOK_PAGE_ID
+ * names that Page so connecting stops depending on the listing.
+ */
+async function fetchPageById(pageId: string, userAccessToken: string): Promise<FacebookPage | undefined> {
+  const page = await graphGet<Partial<FacebookPage>>(`/${pageId}`, {
+    access_token: userAccessToken,
+    fields: "id,name,access_token",
+  });
+  return page.id && page.name && page.access_token ? (page as FacebookPage) : undefined;
+}
+
 export class FacebookOAuthProvider implements OAuthProvider {
   configured(): boolean {
     return isConfigured(env.facebook.appId, env.facebook.appSecret);
@@ -80,14 +94,18 @@ export class FacebookOAuthProvider implements OAuthProvider {
     const userToken = await exchangeForLongLivedUserToken(shortLivedToken);
     const pages = await fetchManagedPages(userToken);
 
-    if (pages.length === 0) {
-      throw new Error("no_managed_pages");
-    }
-
     // MVP: auto-connect the first Page this agent manages. An agent managing
     // multiple Pages can only get the first one this way until a page-picker
-    // step is added in front of this save.
-    const page = pages[0];
+    // step is added in front of this save. A Business Portfolio-owned Page
+    // never reaches this list, hence the by-id fallback.
+    const page = pages[0] ?? (env.facebook.pageId ? await fetchPageById(env.facebook.pageId, userToken) : undefined);
+
+    if (!page) {
+      throw new Error(
+        "no_managed_pages — /me/accounts returned no Page for this account. A Page owned by a Business " +
+          "Portfolio is not listed there; set FACEBOOK_PAGE_ID to its id.",
+      );
+    }
     return {
       accessToken: page.access_token,
       expiresAt: null,

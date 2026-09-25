@@ -21,7 +21,7 @@ export class PlatformConnection {
   platform!: string;
 
   /** Long-lived access token for this agent's account on this platform. Never serialized back to the client. */
-  @Column({ type: "varchar", length: 2000 })
+  @Column({ type: "text" })
   accessToken!: string;
 
   /**
@@ -29,7 +29,7 @@ export class PlatformConnection {
    * Page token minted from a long-lived user token) or that don't support
    * refresh yet. Never serialized back to the client.
    */
-  @Column({ type: "varchar", length: 2000, nullable: true })
+  @Column({ type: "text", nullable: true })
   refreshToken?: string | null;
 
   /** Null where the platform's token doesn't expire (e.g. a Facebook Page token minted from a long-lived user token). */

@@ -47,6 +47,17 @@ async function fetchPagesWithInstagram(userAccessToken: string): Promise<Faceboo
   return data.data;
 }
 
+/** One Page by id — the fallback for Pages /me/accounts refuses to list. */
+async function fetchPageById(pageId: string, userAccessToken: string): Promise<FacebookPage | undefined> {
+  const page = await graphGet<Partial<FacebookPage>>(`/${pageId}`, {
+    access_token: userAccessToken,
+    fields: "id,name,access_token,instagram_business_account",
+  });
+  // A Page the token can see but not act for comes back without access_token;
+  // treat that as "not connectable" rather than saving a useless row.
+  return page.id && page.name && page.access_token ? (page as FacebookPage) : undefined;
+}
+
 interface InstagramAccountInfo {
   id: string;
   username: string;
@@ -89,11 +100,20 @@ export class InstagramOAuthProvider implements OAuthProvider {
     const userToken = await exchangeForLongLivedUserToken(shortLivedToken);
     const pages = await fetchPagesWithInstagram(userToken);
 
-    const pageWithInstagram = pages.find((page) => page.instagram_business_account);
+    // /me/accounts does not enumerate Business Portfolio-owned Pages even when
+    // pages_show_list is granted and the same token can read the Page node
+    // directly — confirmed by testing (2026-09-23): every permission reported
+    // "granted", /me/accounts still [], GET /{page-id} returned the Page, its
+    // access_token and its instagram_business_account. FACEBOOK_PAGE_ID names
+    // that Page so the connect flow stops depending on the listing.
+    const pageWithInstagram =
+      pages.find((page) => page.instagram_business_account) ??
+      (env.facebook.pageId ? await fetchPageById(env.facebook.pageId, userToken) : undefined);
     if (!pageWithInstagram?.instagram_business_account) {
       throw new Error(
         "no_linked_instagram_business_account — connect a Facebook Page with a linked Instagram Business " +
-          "account first (Meta Business Suite -> Settings -> Linked Accounts).",
+          "account first (Meta Business Suite -> Settings -> Linked Accounts). If the Page belongs to a " +
+          "Business Portfolio it will not appear in /me/accounts; set FACEBOOK_PAGE_ID to its id instead.",
       );
     }
 
