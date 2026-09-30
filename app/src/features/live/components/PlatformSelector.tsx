@@ -95,14 +95,21 @@ function AssistedGroup({
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={styles.groupTitle}>{title}</Text>
-      <View style={styles.chipRow}>
+      <View style={{ gap: 8 }}>
         {platforms.map((platform) => {
           const isConnected = connectedPlatforms.includes(platform.id);
           return (
-            <View key={platform.id} style={[styles.chip, styles.chipInfo]}>
-              <View style={[styles.dot, { backgroundColor: platform.color }]} />
-              <Text style={styles.chipLabel}>{platform.label}</Text>
-              <Text style={styles.infoTag}>{isConnected ? "Linked · setup needed" : "Not linked"}</Text>
+            <View key={platform.id} style={[styles.chip, styles.chipInfo, styles.assistedRow]}>
+              <View style={styles.assistedHeader}>
+                <View style={[styles.dot, { backgroundColor: platform.color }]} />
+                <Text style={styles.chipLabel}>{platform.label}</Text>
+                <Text style={styles.infoTag}>{isConnected ? "Linked" : "Not linked"}</Text>
+              </View>
+              {/* The catalog note is the honest per-platform reason this is not
+                  one-click (no Live API, scheduling rules, ...) — see
+                  docs/04-technical-feasibility.md. A generic "setup needed"
+                  read as something the agent could fix. */}
+              <Text style={styles.assistedNote}>{isConnected ? platform.note : "Connect from the accounts screen"}</Text>
             </View>
           );
         })}
@@ -113,6 +120,9 @@ function AssistedGroup({
 
 const styles = StyleSheet.create({
   groupTitle: { fontSize: 12, fontWeight: "700", color: colors.textMuted, marginBottom: 8 },
+  assistedRow: { flexDirection: "column", alignItems: "stretch", gap: 4 },
+  assistedHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  assistedNote: { fontSize: 11, color: colors.textMuted, lineHeight: 15 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     flexDirection: "row",

@@ -35,6 +35,14 @@ export const env = {
     // falls back to the plain scope-based dialog (works fine for
     // personal/non-Portfolio Pages).
     loginConfigId: process.env.FACEBOOK_LOGIN_CONFIG_ID ?? "",
+    // The Page to connect when /me/accounts does not list it. Business
+    // Portfolio-owned Pages are absent from that listing even with
+    // pages_show_list granted, while GET /{page-id} with the same token
+    // returns the Page, its access_token and its linked Instagram account
+    // — confirmed by testing (2026-09-23). Empty -> connecting relies on the
+    // listing alone (fine for personal/non-Portfolio Pages). Shared by the
+    // facebook and instagram OAuth providers.
+    pageId: process.env.FACEBOOK_PAGE_ID ?? "",
   },
   instagram: {
     // Rides on the Facebook app above (same client id/secret) but needs its
@@ -58,6 +66,15 @@ export const env = {
   // Deep-link scheme the mobile app registers (app.json "scheme") — the
   // OAuth callback redirects here so the app can pick the flow back up.
   appScheme: process.env.APP_DEEP_LINK_SCHEME ?? "lifesyclelive",
+  // Exact URL the OAuth callback redirects to when the consent flow ran in
+  // the mobile app. It must match what the app waits for —
+  // `Linking.createURL("connect-callback", ...)` in app/src/api/
+  // platformConnections.ts. In **Expo Go** that resolves to the dev server's
+  // exp:// URL (Expo Go ignores the app scheme), e.g.
+  // exp://192.168.1.10:8081/--/connect-callback, so this must be set per dev
+  // machine/LAN IP. A standalone build registers the scheme itself, hence the
+  // default below.
+  appConnectRedirectUrl: process.env.APP_CONNECT_REDIRECT_URL ?? `${process.env.APP_DEEP_LINK_SCHEME ?? "lifesyclelive"}://connect-callback`,
   // Public URL this server is reachable at (e.g. the ngrok tunnel used for
   // OAuth redirects). Used to build the /go/:broadcastId lead-capture link
   // that adapters post into comments/chat as the call-to-action — see

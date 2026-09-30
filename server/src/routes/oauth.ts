@@ -27,7 +27,7 @@ export async function oauthRoutes(app: FastifyInstance): Promise<void> {
     if (session.web) return reply.type("text/html").send('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lifesycle connection</title></head><body style="font-family:system-ui;background:#fff8fa;color:#362832;padding:40px;text-align:center"><h1>Return to Lifesycle Live</h1><p>Your connection result is available in the app. You can close this window.</p></body></html>');
     const params = new URLSearchParams({ platform: session.platform, status: session.status });
     if (session.message) params.set("message", session.message);
-    return reply.redirect(`exp://192.168.1.129:8081/--/connect-callback?${params}`);
+    return reply.redirect(`${env.appConnectRedirectUrl}?${params}`);
   }
   if (env.tiktok.domainVerificationFilename && /^tiktok[\w-]+\.txt$/.test(env.tiktok.domainVerificationFilename)) {
     app.get(`/${env.tiktok.domainVerificationFilename}`, async (_request, reply) => reply.type("text/plain").send(env.tiktok.domainVerification));
