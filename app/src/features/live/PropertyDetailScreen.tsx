@@ -37,9 +37,11 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
     queryFn: () => getProperty(propertyId),
   });
 
-  const { data: prep, isLoading: prepLoading } = useQuery({
+  const { data: prep, isLoading: prepLoading, isError: prepIsError, error: prepError, refetch: refetchPrep } = useQuery({
     queryKey: ["ai-prep", propertyId],
     queryFn: () => getAiPrep(propertyId),
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: connections } = useQuery({
@@ -161,7 +163,20 @@ export function PropertyDetailScreen({ route, navigation }: Props) {
 
           <View style={styles.divider} />
 
-          <AiPrepPanel isLoading={prepLoading} prep={prep} />
+          <AiPrepPanel
+            isLoading={prepLoading}
+            prep={prep}
+            error={
+              prepIsError
+                ? prepError instanceof ApiError && prepError.status === 401
+                  ? "Your session expired. Sign in again and retry."
+                  : prepError instanceof Error
+                    ? prepError.message
+                    : "AI prep could not be loaded. Check the server and Groq settings."
+                : undefined
+            }
+            onRetry={() => void refetchPrep()}
+          />
 
           <Text style={styles.sectionLabel}>WHERE TO GO LIVE</Text>
           <Text style={styles.sectionHint}>Tap a platform to include it — selected platforms turn their colour.</Text>
