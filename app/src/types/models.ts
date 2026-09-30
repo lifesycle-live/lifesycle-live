@@ -17,14 +17,26 @@ export type PlatformId =
  * one-click publish. The rest require the agent to start natively in the
  * platform's own app; Lifesycle only listens/assists for those.
  */
-export const ONE_CLICK_PLATFORMS: PlatformId[] = ["facebook", "youtube"];
-export const ASSISTED_PLATFORMS: PlatformId[] = ["zoom", "linkedin", "instagram", "tiktok", "x"];
+export const ONE_CLICK_PLATFORMS: PlatformId[] = ["youtube"];
+/**
+ * No API creates the broadcast, but the platform's own web tool hands the
+ * agent an RTMP address they paste into the live dashboard — Lifesycle then
+ * sends the same camera there. Selectable, unlike the assisted platforms.
+ */
+export const MANUAL_PLATFORMS: PlatformId[] = ["facebook", "instagram"];
+export const ASSISTED_PLATFORMS: PlatformId[] = ["zoom", "linkedin", "tiktok", "x"];
 
 export interface PlatformInfo {
   id: PlatformId;
   label: string;
-  mode: "one-click" | "assisted";
+  mode: "one-click" | "manual" | "assisted";
   note: string;
+  /**
+   * The platform's RTMP ingest address, when it is the same for everyone and
+   * only the stream key changes. Instagram issues a different host per
+   * broadcast, so it has none and the agent pastes that too.
+   */
+  ingestUrl?: string;
   /** Brand colour used when the platform is selected in the UI. */
   color: string;
   icon: string;
@@ -35,8 +47,13 @@ export const PLATFORM_CATALOG: Record<PlatformId, PlatformInfo> = {
   facebook: {
     id: "facebook",
     label: "Facebook Live",
-    mode: "one-click",
-    note: "starts instantly",
+    // The Page API path works, but only for a Page Meta considers eligible to
+    // go live (60 days old, 100 followers). Its own Live Producer issues a
+    // key by hand either way, so this is driven the same way as Instagram
+    // until a qualifying Page is connected.
+    mode: "manual",
+    note: "You paste the stream key from the Page's Live Producer",
+    ingestUrl: "rtmps://live-api-s.facebook.com:443/rtmp/",
     color: "#1877F2",
     icon: "f",
   },
@@ -67,8 +84,8 @@ export const PLATFORM_CATALOG: Record<PlatformId, PlatformInfo> = {
   instagram: {
     id: "instagram",
     label: "Instagram Live",
-    mode: "assisted",
-    note: "Account connection only; live comments not integrated",
+    mode: "manual",
+    note: "You paste the stream key from Instagram; live comments are not available",
     color: "#E1306C",
     icon: "◎",
   },

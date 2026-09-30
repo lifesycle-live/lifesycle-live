@@ -30,7 +30,27 @@ async function buildPublishContext(agentId: string, platform: PlatformId): Promi
 const startBroadcastSchema = z.object({
   propertyId: z.string().min(1),
   platforms: z.array(z.string()).min(1),
+  /**
+   * Platforms the agent will hand an RTMP address to from the live dashboard
+   * rather than have an adapter provision one. Instagram has no API to create
+   * a broadcast at all; Facebook has one, but publishing through it also needs
+   * Page eligibility the agent may not have (60 days old and 100 followers,
+   * error_subcode 1363120), while the Page's own Live Producer still issues a
+   * key by hand. Listing a platform here skips its adapter.
+   */
+  manualPlatforms: z.array(z.string()).default([]),
 });
+
+/**
+ * Platforms with no API to create a live broadcast, but whose own web tool
+ * issues an RTMP address the agent can paste in (routes/videoRelay.ts
+ * `target`). They start with no ingest of their own — the agent supplies it
+ * once the platform has generated it, and the camera relay publishes there.
+ * Selecting one is therefore not a failure, unlike the assisted-only
+ * platforms that have no destination at all. See
+ * docs/04-technical-feasibility.md.
+ */
+const MANUAL_DESTINATION_PLATFORMS = new Set<string>(["instagram"]);
 
 function agentIdOf(request: FastifyRequest): string {
   return (request as FastifyRequest & { agentId: string }).agentId;
@@ -67,6 +87,7 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     if (!property) return reply.code(404).send({ error: "Property not found" });
 
     const platforms = body.data.platforms as PlatformId[];
+    const manualPlatforms = new Set(body.data.manualPlatforms);
     let broadcast = broadcasts.create({
       propertyId: property.id,
       property,
@@ -81,8 +102,11 @@ export async function broadcastRoutes(app: FastifyInstance): Promise<void> {
     const failures: string[] = [];
 
     for (const platform of platforms) {
+      // The agent pastes this one's ingest in from the live dashboard.
+      if (manualPlatforms.has(platform)) continue;
       const adapter = getAdapter(platform);
       if (!adapter) {
+        if (MANUAL_DESTINATION_PLATFORMS.has(platform)) continue;
         failures.push(`${platform}: no adapter implemented (assisted-only platform, per docs/04-technical-feasibility.md)`);
         continue;
       }

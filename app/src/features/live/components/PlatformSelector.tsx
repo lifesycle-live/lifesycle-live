@@ -29,6 +29,7 @@ interface Props {
 export function PlatformSelector({ selected, onToggle, connectedPlatforms, onRequestConnect }: Props) {
   const ordered = Object.values(PLATFORM_CATALOG).sort((a, b) => Number(connectedPlatforms.includes(b.id)) - Number(connectedPlatforms.includes(a.id)));
   const oneClick = ordered.filter((p) => p.mode === "one-click");
+  const manual = ordered.filter((p) => p.mode === "manual");
   const assisted = ordered.filter((p) => p.mode === "assisted");
 
   return (
@@ -41,6 +42,16 @@ export function PlatformSelector({ selected, onToggle, connectedPlatforms, onReq
         onToggle={onToggle}
         onRequestConnect={onRequestConnect}
       />
+      {manual.length > 0 && (
+        <Group
+          title="You paste the key — we send the camera"
+          platforms={manual}
+          selected={selected}
+          connectedPlatforms={connectedPlatforms}
+          onToggle={onToggle}
+          onRequestConnect={onRequestConnect}
+        />
+      )}
       <AssistedGroup title="Other connected accounts · separate broadcast setup" platforms={assisted} connectedPlatforms={connectedPlatforms} />
     </View>
   );

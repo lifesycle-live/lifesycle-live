@@ -41,7 +41,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: options.method ?? "GET",
       headers: {
-        "Content-Type": "application/json",
+        // Only when something is actually sent: Fastify rejects a body-less
+        // POST that still declares JSON with 400 FST_ERR_CTP_EMPTY_JSON_BODY,
+        // which silently broke every no-body call (ending a broadcast,
+        // stopping the camera relay).
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
         ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,

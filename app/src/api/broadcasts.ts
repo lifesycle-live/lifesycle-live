@@ -1,7 +1,7 @@
 import { apiRequest, mockDelay } from "./client";
 import { USE_MOCKS } from "./config";
 import { createMockBroadcast, mockBroadcastSummary, mockProperties } from "./mockData";
-import { Broadcast, BroadcastSummary, PlatformId, Property } from "../types/models";
+import { Broadcast, BroadcastSummary, PlatformId, Property, MANUAL_PLATFORMS } from "../types/models";
 
 export async function getProperties(): Promise<Property[]> {
   if (USE_MOCKS) return mockDelay(mockProperties);
@@ -45,7 +45,9 @@ export async function startBroadcast(propertyId: string, platforms: PlatformId[]
   if (USE_MOCKS) return mockDelay(createMockBroadcast(propertyId, platforms), 800);
   return apiRequest<Broadcast>("/broadcasts", {
     method: "POST",
-    body: { propertyId, platforms },
+    // The server skips provisioning for these and waits for the agent to paste
+    // the platform's own RTMP address in the live dashboard.
+    body: { propertyId, platforms, manualPlatforms: platforms.filter((p) => MANUAL_PLATFORMS.includes(p)) },
   });
 }
 
